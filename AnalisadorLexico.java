@@ -1,172 +1,228 @@
-package lexico;
+from dataclasses import dataclass
+from typing import List, Optional
+from enum import Enum
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+class TokenType(Enum):
+    SE = 'se'
+    SENAO = 'senao'
+    PARA = 'para'
+    FACA = 'faca'
+    ENQUANTO = 'enquanto'
+    ESCREVA = 'escreva'
+    LEIA = 'leia'
+    INTEIRO = 'inteiro'
+    FLUTUANTE = 'flutuante'
+    LOGICO = 'logico'
+    CADEIA = 'cadeia'
+    INICIO = 'inicio'
+    FIM = 'fim'
+    FUNCAO = 'funcao'
+    RETORNE = 'retorne'
+    ADICAO = '+'
+    SUBTRACAO = '-'
+    MULTIPLICACAO = '*'
+    DIVISAO = '/'
+    ABRE_PAREN = '('
+    FECHA_PAREN = ')'
+    ABRE_COLCH = '['
+    FECHA_COLCH = ']'
+    MAIOR = '>'
+    MENOR = '<'
+    MAIOR_IGUAL = '>='
+    MENOR_IGUAL = '<='
+    IGUAL = '=='
+    DIFERENTE = '!='
+    ATRIBUICAO = ':='
+    CONCATENACAO = '&'
+    INCREMENTO = '++'
+    DECREMENTO = '--'
+    VIRGULA = ','
+    CONST_INTEIRO = 'CONST_INTEIRO'
+    CONST_FLOAT = 'CONST_FLOAT'
+    CONST_STRING = 'CONST_STRING'
+    CONST_BOOL = 'CONST_BOOL'
+    IDENTIFICADOR = 'IDENTIFICADOR'
+    EOF = 'EOF'
 
-public class AnalisadorLexico {
-    public static void main(String[] args) {
-        Map<String, Map<Character, String>> afd = new HashMap<>();
+@dataclass
+class Token:
+    tipo: TokenType
+    lexema: str
+    linha: int
+    coluna: int
 
-        // transições de q0
-        Map<Character, String> q0 = new HashMap<>();
-        q0.put(' ', "q5"); q0.put('\t', "q5"); q0.put('\n', "q5");
-        q0.put('(', "q6"); q0.put(')', "q7"); q0.put('[', "q8"); q0.put(']', "q9");
-        q0.put('+', "q10"); q0.put('-', "q11"); q0.put('*', "q12"); q0.put('/', "q13");
-        q0.put('=', "q14"); q0.put('>', "q15"); q0.put('<', "q16"); q0.put('&', "q17");
-        q0.put('"', "q18");
-        for (char c = '0'; c <= '9'; c++) q0.put(c, "q1");
-        for (char c = 'a'; c <= 'z'; c++) q0.put(c, "q2");
-        for (char c = 'A'; c <= 'Z'; c++) q0.put(c, "q2");
-        afd.put("q0", q0);
+class AnalisadorLexico:
+    def __init__(self, codigo_fonte: str):
+        self.codigo = codigo_fonte  # Remova o + '\0'
+        self.pos = 0
+        self.linha = 1
+        self.coluna = 1
+        self.tokens: List[Token] = []
+        self.erros: List[str] = []
 
-        // transições de q1
-        Map<Character, String> q1 = new HashMap<>();
-        for (char c = '0'; c <= '9'; c++) q1.put(c, "q1");
-        q1.put('.', "q3");
-        afd.put("q1", q1);
+    def analisar(self) -> List[Token]:
+        while self.pos < len(self.codigo):
+            char = self.codigo[self.pos]
+            if char.isspace():
+                if char == '\n':
+                    self.linha += 1
+                    self.coluna = 1
+                else:
+                    self.coluna += 1
+                self.pos += 1
+                continue
+            if char == '/' and self.peek() == '/':
+                self.consumir_comentario()
+                continue
+            if char.isalpha() or char == '_':
+                lexema = self.consumir_identificador()
+                tipo = self.get_keyword_type(lexema)
+                self.tokens.append(Token(tipo, lexema, self.linha, self.coluna - len(lexema)))
+                continue
+            if char.isdigit() or (char == '-' and self.peek().isdigit()):
+                lexema, tipo = self.consumir_numero()
+                self.tokens.append(Token(tipo, lexema, self.linha, self.coluna - len(lexema)))
+                continue
+            if char == '"':
+                lexema = self.consumir_string()
+                if lexema is not None:
+                    self.tokens.append(Token(TokenType.CONST_STRING, lexema, self.linha, self.coluna - len(lexema) - 2))
+                continue
+            op = self.consumir_operador()
+            if op:
+                tipo = self.get_op_type(op)
+                self.tokens.append(Token(tipo, op, self.linha, self.coluna - len(op)))
+                continue
+            self.erros.append(f"Caractere inválido '{char}' na linha {self.linha}, coluna {self.coluna}")
+            self.pos += 1
+            self.coluna += 1
+        self.tokens.append(Token(TokenType.EOF, '', self.linha, self.coluna))
+        return self.tokens
 
-        // transições de q2
-        Map<Character, String> q2 = new HashMap<>();
-        for (char c = '0'; c <= '9'; c++) q2.put(c, "q2");
-        for (char c = 'a'; c <= 'z'; c++) q2.put(c, "q2");
-        for (char c = 'A'; c <= 'Z'; c++) q2.put(c, "q2");
-        afd.put("q2", q2);
+    def peek(self):
+        if self.pos + 1 < len(self.codigo):
+            return self.codigo[self.pos + 1]
+        return '\0'
 
-        // transições de q3
-        Map<Character, String> q3 = new HashMap<>();
-        for (char c = '0'; c <= '9'; c++) q3.put(c, "q4");
-        afd.put("q3", q3);
+    def consumir_comentario(self):
+        while self.pos < len(self.codigo) and self.codigo[self.pos] != '\n':
+            self.pos += 1
+        if self.pos < len(self.codigo) and self.codigo[self.pos] == '\n':
+            self.linha += 1
+            self.coluna = 1
+            self.pos += 1
 
-        // transições de q4
-        Map<Character, String> q4 = new HashMap<>();
-        for (char c = '0'; c <= '9'; c++) q4.put(c, "q4");
-        afd.put("q4", q4);
+    def consumir_identificador(self):
+        start = self.pos
+        while self.pos < len(self.codigo) and (self.codigo[self.pos].isalnum() or self.codigo[self.pos] == '_'):
+            self.pos += 1
+            self.coluna += 1
+        return self.codigo[start:self.pos]
 
-        // q5 a q9 vazias (finais)
-        afd.put("q5", new HashMap<>());
-        afd.put("q6", new HashMap<>());
-        afd.put("q7", new HashMap<>());
-        afd.put("q8", new HashMap<>());
-        afd.put("q9", new HashMap<>());
-
-        // transições de q10
-        Map<Character, String> q10 = new HashMap<>();
-        q10.put('+', "q19");
-        afd.put("q10", q10);
-
-        // transições de q11
-        Map<Character, String> q11 = new HashMap<>();
-        q11.put('-', "q20");
-        afd.put("q11", q11);
-
-        // q12 a q13 vazias (finais)
-        afd.put("q12", new HashMap<>());
-        afd.put("q13", new HashMap<>());
-
-        // transições de q14
-        Map<Character, String> q14 = new HashMap<>();
-        q14.put('=', "q21");
-        afd.put("q14", q14);
-
-        // transições de q15
-        Map<Character, String> q15 = new HashMap<>();
-        q15.put('=', "q22");
-        afd.put("q15", q15);
-
-        // transições de q16
-        Map<Character, String> q16 = new HashMap<>();
-        q16.put('=', "q23");
-        afd.put("q16", q16);
-
-        // q17 vazia (final)
-        afd.put("q17", new HashMap<>());
-
-        // transições de q18
-        Map<Character, String> q18 = new HashMap<>();
-        for (char c = '0'; c <= '9'; c++) q18.put(c, "q18");
-        for (char c = 'a'; c <= 'z'; c++) q18.put(c, "q18");
-        for (char c = 'A'; c <= 'Z'; c++) q18.put(c, "q18");
-        q18.put(' ', "q18"); q18.put('!', "q18"); q18.put('@', "q18"); q18.put('#', "q18"); q18.put('$', "q18");
-        q18.put('%', "q18"); q18.put('&', "q18"); q18.put('*', "q18"); q18.put('(', "q18"); q18.put(')', "q18");
-        q18.put('-', "q18"); q18.put('_', "q18"); q18.put('+', "q18"); q18.put('=', "q18"); q18.put('{', "q18");
-        q18.put('}', "q18"); q18.put('[', "q18"); q18.put(']', "q18"); q18.put('|', "q18"); q18.put('\\', "q18");
-        q18.put(':', "q18"); q18.put(';', "q18"); q18.put('<', "q18"); q18.put('>', "q18"); q18.put(',', "q18");
-        q18.put('.', "q18"); q18.put('?', "q18"); q18.put('/', "q18");
-        q18.put('"', "q24");
-        afd.put("q18", q18);
-
-        // q19 a q23 vazias (finais)
-        afd.put("q19", new HashMap<>());
-        afd.put("q20", new HashMap<>());
-        afd.put("q21", new HashMap<>());
-        afd.put("q22", new HashMap<>());
-        afd.put("q23", new HashMap<>());
-
-        // q24 vazia (final)
-        afd.put("q24", new HashMap<>());
-
-        Map<String, String> estadosFinais = new HashMap<>();
-        estadosFinais.put("q1", "INTEIRO");
-        estadosFinais.put("q2", "IDENTIFICADOR");
-        estadosFinais.put("q4", "FLOAT");
-        estadosFinais.put("q5", "ESPACO");
-        estadosFinais.put("q6", "ABRE_PARENTESE");
-        estadosFinais.put("q7", "FECHA_PARENTESE");
-        estadosFinais.put("q8", "ABRE_COLCHETE");
-        estadosFinais.put("q9", "FECHA_COLCHETE");
-        estadosFinais.put("q10", "SOMA");
-        estadosFinais.put("q11", "SUBTRACAO");
-        estadosFinais.put("q12", "MULTIPLICACAO");
-        estadosFinais.put("q13", "DIVISAO");
-        estadosFinais.put("q14", "ATRIBUICAO");
-        estadosFinais.put("q15", "MAIOR");
-        estadosFinais.put("q16", "MENOR");
-        estadosFinais.put("q17", "CONCATENACAO");
-        estadosFinais.put("q19", "INCREMENTO");
-        estadosFinais.put("q20", "DECREMENTO");
-        estadosFinais.put("q21", "IGUAL");
-        estadosFinais.put("q22", "MAIOR_IGUAL");
-        estadosFinais.put("q23", "MENOR_IGUAL");
-        estadosFinais.put("q24", "STRING");
-
-        String entrada = " if (cont >10)/ ";
-        List<Token> listaDeTokens = new ArrayList<>();
-        String estado = "q0";
-        String lexema = "";
-        int posicao = 0;
-        int indice = 0;
-
-        while (indice < entrada.length()) {
-            char caractere = entrada.charAt(indice);
-
-            Map<Character, String> transicoes = afd.get(estado);
-            if (transicoes.containsKey(caractere)) {
-                estado = transicoes.get(caractere);
-                if (!estado.equals("q5")) {
-                    lexema += caractere;
-                }
-                posicao += 1;
-                indice += 1;
-            } else if (estadosFinais.containsKey(estado)) {
-                if (!estadosFinais.get(estado).equals("ESPACO")) {
-                    listaDeTokens.add(new Token(estadosFinais.get(estado), lexema, posicao));
-                }
-                estado = "q0";
-                lexema = "";
-            } else {
-                System.out.println("Erro: token inválido: " + lexema + caractere);
-                break;
-            }
+    def get_keyword_type(self, lexema):
+        keywords = {
+            'se': TokenType.SE,
+            'senao': TokenType.SENAO,
+            'para': TokenType.PARA,
+            'faca': TokenType.FACA,
+            'enquanto': TokenType.ENQUANTO,
+            'escreva': TokenType.ESCREVA,
+            'leia': TokenType.LEIA,
+            'inteiro': TokenType.INTEIRO,
+            'flutuante': TokenType.FLUTUANTE,
+            'logico': TokenType.LOGICO,
+            'cadeia': TokenType.CADEIA,
+            'inicio': TokenType.INICIO,
+            'fim': TokenType.FIM,
+            'funcao': TokenType.FUNCAO,
+            'retorne': TokenType.RETORNE,
+            'verdadeiro': TokenType.CONST_BOOL,
+            'falso': TokenType.CONST_BOOL,
         }
+        return keywords.get(lexema, TokenType.IDENTIFICADOR)
 
-        if (estadosFinais.containsKey(estado) && !estadosFinais.get(estado).equals("ESPACO")) {
-            listaDeTokens.add(new Token(estadosFinais.get(estado), lexema, posicao));
-        }
+    def consumir_numero(self):
+        start = self.pos
+        is_float = False
+        if self.codigo[self.pos] == '-':
+            self.pos += 1
+            self.coluna += 1
+        while self.pos < len(self.codigo) and self.codigo[self.pos].isdigit():
+            self.pos += 1
+            self.coluna += 1
+        if self.pos < len(self.codigo) and self.codigo[self.pos] == '.':
+            is_float = True
+            self.pos += 1
+            self.coluna += 1
+            while self.pos < len(self.codigo) and self.codigo[self.pos].isdigit():
+                self.pos += 1
+                self.coluna += 1
+        lexema = self.codigo[start:self.pos]
+        tipo = TokenType.CONST_FLOAT if is_float else TokenType.CONST_INTEIRO
+        return lexema, tipo
 
-        for (Token tk : listaDeTokens) {
-            System.out.println(tk);
+    def consumir_string(self):
+        start = self.pos
+        self.pos += 1
+        self.coluna += 1
+        while self.pos < len(self.codigo) and self.codigo[self.pos] != '"':
+            if self.codigo[self.pos] == '\n':
+                self.erros.append(f"String não fechada na linha {self.linha}")
+                return None
+            self.pos += 1
+            self.coluna += 1
+        if self.pos >= len(self.codigo) or self.codigo[self.pos] != '"':
+            self.erros.append(f"String não fechada na linha {self.linha}")
+            return None
+        lexema = self.codigo[start+1:self.pos]
+        self.pos += 1
+        self.coluna += 1
+        return lexema
+
+    def consumir_operador(self):
+        char = self.codigo[self.pos]
+        next_char = self.peek()
+        two_char = char + next_char
+        two_char_ops = {'>=': True, '<=': True, '==': True, '!=': True, '++': True, '--': True, ':=': True}
+        if two_char in two_char_ops:
+            self.pos += 2
+            self.coluna += 2
+            return two_char
+        one_char_ops = {'+': True, '-': True, '*': True, '/': True, '(': True, ')': True, '[': True, ']': True, '>': True, '<': True, '&': True, ',': True}
+        if char in one_char_ops:
+            self.pos += 1
+            self.coluna += 1
+            return char
+        return None
+
+    def get_op_type(self, op):
+        ops = {
+            '+': TokenType.ADICAO,
+            '-': TokenType.SUBTRACAO,
+            '*': TokenType.MULTIPLICACAO,
+            '/': TokenType.DIVISAO,
+            '(': TokenType.ABRE_PAREN,
+            ')': TokenType.FECHA_PAREN,
+            '[': TokenType.ABRE_COLCH,
+            ']': TokenType.FECHA_COLCH,
+            '>': TokenType.MAIOR,
+            '<': TokenType.MENOR,
+            '>=': TokenType.MAIOR_IGUAL,
+            '<=': TokenType.MENOR_IGUAL,
+            '==': TokenType.IGUAL,
+            '!=': TokenType.DIFERENTE,
+            ':=': TokenType.ATRIBUICAO,
+            '&': TokenType.CONCATENACAO,
+            '++': TokenType.INCREMENTO,
+            '--': TokenType.DECREMENTO,
+            ',': TokenType.VIRGULA,
         }
-    }
-}
+        return ops.get(op)
+
+    def imprimir_tokens(self):
+        for token in self.tokens[:-1]:
+            print(f"Token: {token.tipo.name}, Lexema: {token.lexema}, Linha: {token.linha}, Coluna: {token.coluna}")
+
+    def imprimir_erros(self):
+        for erro in self.erros:
+            print(erro)
